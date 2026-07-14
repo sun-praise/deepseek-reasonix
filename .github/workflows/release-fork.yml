@@ -1,0 +1,72 @@
+name: Fork Release
+
+# Lightweight release workflow for the sun-praise/deepseek-reasonix fork.
+# It builds the reasonix binary for the platforms our install script supports
+# and uploads them to the GitHub release created by the tag push.
+#
+# The upstream release.yml is gated on a protected environment and R2 secrets;
+# this workflow is intentionally simple and works with only GITHUB_TOKEN.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository == 'sun-praise/deepseek-reasonix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build release archives
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          build() {
+            local goos="$1"
+            local goarch="$2"
+            local bin="reasonix"
+            local ext="tar.gz"
+            if [[ "$goos" == "windows" ]]; then
+              bin="reasonix.exe"
+              ext="zip"
+            fi
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+              go build -trimpath -ldflags="-s -w -X main.version=${TAG}" \
+              -o "dist/${bin}" ./cmd/reasonix
+            if [[ "$goos" == "windows" ]]; then
+              (cd dist && zip "reasonix-${goos}-${goarch}.zip" "${bin}")
+            else
+              (cd dist && tar -czf "reasonix-${goos}-${goarch}.tar.gz" "${bin}")
+            fi
+            rm -f "dist/${bin}" "dist/${bin}.exe"
+          }
+          build linux amd64
+          build linux arm64
+          build darwin amd64
+          build darwin arm64
+          build windows amd64
+          build windows arm64
+          ls -la dist
+
+      - name: Create or upload release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Reasonix CLI ${TAG}" \
+              --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --clobber
