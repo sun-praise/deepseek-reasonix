@@ -70,6 +70,7 @@ func multiReviewCommand(args []string) int {
 	fs := flag.NewFlagSet("multi-review", flag.ContinueOnError)
 	base := fs.String("base", "", "base branch/commit to diff against (defaults to HEAD — reviews uncommitted working-tree changes)")
 	commit := fs.String("commit", "", "review a specific commit (shows changes introduced by that commit)")
+	diffFile := fs.String("diff", "", "path to a diff file to review (skips git diff)")
 	model := fs.String("model", "", "provider name override (default: config default_model)")
 	instructions := fs.String("instructions", "", "extra review instructions appended to every reviewer prompt")
 	team := fs.String("team", "quality,security,performance", "comma-separated reviewer personas to run")
@@ -82,6 +83,15 @@ func multiReviewCommand(args []string) int {
 	}
 
 	diff, err := getReviewDiff(*base, *commit)
+	if *diffFile != "" {
+		b, readErr := os.ReadFile(*diffFile)
+		if readErr != nil {
+			fmt.Fprintln(os.Stderr, "error: failed to read diff file:", readErr)
+			return 1
+		}
+		diff = string(b)
+		err = nil
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		return 1
