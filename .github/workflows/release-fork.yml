@@ -10,6 +10,11 @@ name: Fork Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and release (e.g. v1.17.13)'
+        required: true
 
 permissions:
   contents: write
@@ -20,14 +25,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
+      - name: Determine tag
+        id: meta
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$REF_NAME}"
+          if [[ -z "$tag" ]]; then
+            echo "::error::could not determine tag"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >>"$GITHUB_OUTPUT"
+
       - name: Build release archives
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -56,12 +77,23 @@ jobs:
           build darwin arm64
           build windows amd64
           build windows arm64
-          ls -la dist
+
+      - name: Generate SHA256SUMS
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > SHA256SUMS
+          echo "### Release assets for ${TAG}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create or upload release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
           if ! gh release view "$TAG" >/dev/null 2>&1; then
@@ -70,3 +102,15 @@ jobs:
               --generate-notes
           fi
           gh release upload "$TAG" dist/* --clobber
+
+      - name: Smoke test released binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p smoke
+          gh release download "$TAG" -p 'reasonix-linux-amd64.tar.gz' -D smoke
+          tar -xzf smoke/reasonix-linux-amd64.tar.gz -C smoke
+          smoke/reasonix --version
+          smoke/reasonix multi-review --help
