@@ -17,6 +17,10 @@ permissions:
 jobs:
   cache-guard:
     name: cache hit guard
+    # This is the upstream release workflow; it requires secrets and a
+    # protected environment that only exist in esengine/DeepSeek-Reasonix.
+    # The fork uses release-fork.yml instead.
+    if: github.repository == 'esengine/DeepSeek-Reasonix'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,6 +32,7 @@ jobs:
 
   goreleaser:
     name: archives + checksums + homebrew tap
+    if: github.repository == 'esengine/DeepSeek-Reasonix'
     needs: cache-guard
     runs-on: ubuntu-latest
     # CLI stable release (archives + GitHub release + Homebrew cask). It does not
