@@ -113,4 +113,8 @@ jobs:
           gh release download "$TAG" -p 'reasonix-linux-amd64.tar.gz' -D smoke
           tar -xzf smoke/reasonix-linux-amd64.tar.gz -C smoke
           smoke/reasonix --version
-          smoke/reasonix multi-review --help
+          # `multi-review --help` exits 2 (flag package default), so we only
+          # check that the help text is present and contains the expected flag.
+          smoke/reasonix multi-review --help > /tmp/multi-review-help.txt 2>&1 || true
+          grep -q 'Usage of multi-review:' /tmp/multi-review-help.txt
+          grep -q 'multi-review' /tmp/multi-review-help.txt
